@@ -48,6 +48,7 @@ class Heatmap_Leben_Admin
     {
         // Cargar estilos en ambas páginas del plugin
         if ($hook === 'toplevel_page_heatmap-leben' || $hook === 'heatmap_page_heatmap-leben-settings') {
+            wp_enqueue_media();
             wp_enqueue_style('heatmap-leben-admin', HEATMAP_LEBEN_PLUGIN_URL . 'assets/css/admin.css', [], HEATMAP_LEBEN_VERSION);
         }
 
@@ -243,7 +244,25 @@ class Heatmap_Leben_Admin
 
                                 res.data.forEach(function(page, idx) {
                                     const hasScreenshot = screenshots[page.page_url];
-                                    const screenshotUrl = hasScreenshot ? '<?php echo wp_upload_dir()['baseurl']; ?>/' : '';
+
+                                    const actions = $('<div>').append(
+                                        $('<input>').attr({
+                                            type: 'file',
+                                            accept: 'image/*',
+                                            id: 'file-' + idx,
+                                            'data-url': page.page_url,
+                                            style: 'display:none;'
+                                        }),
+                                        $('<button>').addClass('button button-small upload-screenshot')
+                                        .attr('data-idx', idx)
+                                        .attr('data-url', page.page_url)
+                                        .text('Subir'),
+                                        $('<button>').addClass('button button-small select-library')
+                                        .attr('data-idx', idx)
+                                        .attr('data-url', page.page_url)
+                                        .css('margin-left', '6px')
+                                        .text('Biblioteca')
+                                    );
 
                                     const row = $('<tr>').append(
                                         $('<td>').append(
@@ -255,30 +274,18 @@ class Heatmap_Leben_Admin
                                             '<span style="color:green;">✓ Cargado</span> <a href="#" class="preview-screenshot" data-url="' + page.page_url + '">Ver</a>' :
                                             '<span style="color:#999;">Sin screenshot</span>'
                                         ),
-                                        $('<td>').append(
-                                            $('<input>').attr({
-                                                type: 'file',
-                                                accept: 'image/*',
-                                                id: 'file-' + idx,
-                                                'data-url': page.page_url,
-                                                style: 'display:none;'
-                                            }),
-                                            $('<button>').addClass('button button-small upload-screenshot')
-                                            .attr('data-idx', idx)
-                                            .attr('data-url', page.page_url)
-                                            .text('Subir')
-                                        )
+                                        $('<td>').append(actions)
                                     );
                                     tbody.append(row);
                                 });
 
                                 // Eventos para upload
-                                $('.upload-screenshot').on('click', function() {
+                                $('.upload-screenshot').off('click').on('click', function() {
                                     const idx = $(this).data('idx');
                                     $('#file-' + idx).click();
                                 });
 
-                                $('input[type="file"]').on('change', function() {
+                                $('input[type="file"]').off('change').on('change', function() {
                                     const file = this.files[0];
                                     const url = $(this).data('url');
                                     const idx = this.id.split('-')[1];
@@ -316,8 +323,61 @@ class Heatmap_Leben_Admin
                                     });
                                 });
 
+                                // Selector de biblioteca
+                                let mediaFrame = null;
+                                let mediaTarget = {
+                                    idx: null,
+                                    url: ''
+                                };
+
+                                $(document).off('click', '.select-library').on('click', '.select-library', function(e) {
+                                    e.preventDefault();
+                                    mediaTarget = {
+                                        idx: $(this).data('idx'),
+                                        url: $(this).data('url')
+                                    };
+
+                                    if (!mediaFrame) {
+                                        mediaFrame = wp.media({
+                                            title: 'Selecciona una imagen',
+                                            button: {
+                                                text: 'Usar esta imagen'
+                                            },
+                                            multiple: false
+                                        });
+
+                                        mediaFrame.on('select', function() {
+                                            const attachment = mediaFrame.state().get('selection').first().toJSON();
+                                            if (!attachment || !attachment.id) return;
+
+                                            $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:#999;">Guardando...</span>');
+
+                                            $.post(ajaxurl, {
+                                                action: 'hm_leben_upload_screenshot',
+                                                nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>',
+                                                page_url: mediaTarget.url,
+                                                attachment_id: attachment.id
+                                            }).done(function(res) {
+                                                if (res && res.success) {
+                                                    $('#screenshot-status-' + mediaTarget.idx).html(
+                                                        '<span style="color:green;">✓ Cargado (' + res.data.width + 'x' + res.data.height + ')</span> ' +
+                                                        '<a href="' + res.data.url + '" target="_blank">Ver</a>'
+                                                    );
+                                                    screenshots[mediaTarget.url] = res.data.attachment_id;
+                                                } else {
+                                                    $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:red;">✗ Error</span>');
+                                                }
+                                            }).fail(function() {
+                                                $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:red;">✗ Error</span>');
+                                            });
+                                        });
+                                    }
+
+                                    mediaFrame.open();
+                                });
+
                                 // Preview screenshots
-                                $(document).on('click', '.preview-screenshot', function(e) {
+                                $(document).off('click', '.preview-screenshot').on('click', '.preview-screenshot', function(e) {
                                     e.preventDefault();
                                     const url = $(this).data('url');
                                     $.post(ajaxurl, {
@@ -744,6 +804,28 @@ class Heatmap_Leben_Admin
             wp_send_json_error('missing pageurl', 400);
         }
 
+        $attachment_id = isset($_POST['attachment_id']) ? intval($_POST['attachment_id']) : 0;
+
+        // Permitir elegir una imagen ya existente
+        if ($attachment_id) {
+            if (!wp_attachment_is_image($attachment_id)) {
+                wp_send_json_error('Invalid attachment', 400);
+            }
+
+            $meta = wp_get_attachment_metadata($attachment_id);
+
+            $screenshots = get_option('heatmap_leben_screenshots', []);
+            $screenshots[$pageurl] = $attachment_id;
+            update_option('heatmap_leben_screenshots', $screenshots);
+
+            wp_send_json_success([
+                'attachment_id' => $attachment_id,
+                'url' => wp_get_attachment_url($attachment_id),
+                'width' => $meta['width'] ?? 0,
+                'height' => $meta['height'] ?? 0,
+            ]);
+        }
+
         if (empty($_FILES['screenshot'])) {
             error_log('Heatmap: No file uploaded');
             wp_send_json_error('No file uploaded', 400);
@@ -779,10 +861,8 @@ class Heatmap_Leben_Admin
         }
 
         // Generate attachment metadata
-        wp_update_attachment_metadata(
-            $attachment_id,
-            wp_generate_attachment_metadata($attachment_id, $upload['file'])
-        );
+        $meta = wp_generate_attachment_metadata($attachment_id, $upload['file']);
+        wp_update_attachment_metadata($attachment_id, $meta);
 
         // Save screenshot URL to pageurl mapping
         $screenshots = get_option('heatmap_leben_screenshots', []);
@@ -792,8 +872,8 @@ class Heatmap_Leben_Admin
         wp_send_json_success([
             'attachment_id' => $attachment_id,
             'url' => wp_get_attachment_url($attachment_id),
-            'width' => wp_get_attachment_metadata($attachment_id)['width'] ?? 0,
-            'height' => wp_get_attachment_metadata($attachment_id)['height'] ?? 0,
+            'width' => $meta['width'] ?? 0,
+            'height' => $meta['height'] ?? 0,
         ]);
     }
 

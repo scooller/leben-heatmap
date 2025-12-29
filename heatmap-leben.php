@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Heatmap Leben
  * Description: Plugin para mapa de calor de múltiples páginas con visualización en admin, informe y exportación de imagen.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Leben
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define constants
-define('HEATMAP_LEBEN_VERSION', '1.1.0');
+define('HEATMAP_LEBEN_VERSION', '1.1.1');
 define('HEATMAP_LEBEN_PLUGIN_FILE', __FILE__);
 define('HEATMAP_LEBEN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('HEATMAP_LEBEN_PLUGIN_URL', plugin_dir_url(__FILE__));
