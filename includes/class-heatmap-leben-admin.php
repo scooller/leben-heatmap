@@ -735,17 +735,17 @@ class Heatmap_Leben_Admin
         }
 
         // 🎯 OBTENER Y NORMALIZAR URL
-        $pageurl = isset($_POST['pageurl']) ? wp_unslash($_POST['pageurl']) : '';
+        $pageurl = isset($_POST['page_url']) ? wp_unslash($_POST['page_url']) : '';
+        // 🎯 NORMALIZAR: Solo la URL sin query strings
+        $pageurl = remove_query_arg([], $pageurl);
 
         if (empty($pageurl)) {
+            error_log('Heatmap: Missing pageurl');
             wp_send_json_error('missing pageurl', 400);
         }
 
-        // 🎯 NORMALIZAR: Solo la URL sin query strings
-        $pageurl = strtok($pageurl, '?');
-        $pageurl = esc_url_raw($pageurl);
-
         if (empty($_FILES['screenshot'])) {
+            error_log('Heatmap: No file uploaded');
             wp_send_json_error('No file uploaded', 400);
         }
 
@@ -758,6 +758,7 @@ class Heatmap_Leben_Admin
         $upload = wp_handle_upload($file, ['test_form' => false]);
 
         if (isset($upload['error'])) {
+            error_log('Heatmap: Upload error - ' . $upload['error']);
             wp_send_json_error($upload['error'], 400);
         }
 
@@ -773,6 +774,7 @@ class Heatmap_Leben_Admin
         );
 
         if (is_wp_error($attachment_id)) {
+            error_log('Heatmap: Attachment error - ' . $attachment_id->get_error_message());
             wp_send_json_error($attachment_id->get_error_message(), 400);
         }
 
