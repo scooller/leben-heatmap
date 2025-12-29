@@ -407,7 +407,7 @@ class Heatmap_Leben_Admin
             $density = isset($item['d']) ? intval($item['d']) : 1;
             $session_id = isset($item['s']) ? sanitize_text_field($item['s']) : '';
 
-            error_log('📝 Inserting: x=' . $x . ', y=' . $y . ', sy=' . $scroll_y . ', ph=' . $page_height);
+            //error_log('📝 Inserting: x=' . $x . ', y=' . $y . ', sy=' . $scroll_y . ', ph=' . $page_height);
 
             // Aplicar filtros
             $settings = heatmap_leben_get_settings();
@@ -450,7 +450,7 @@ class Heatmap_Leben_Admin
 
             if ($result) {
                 $inserted++;
-                error_log('✅ Inserted successfully');
+                //error_log('✅ Inserted successfully');
             } else {
                 error_log('❌ Insert failed: ' . $wpdb->last_error);
             }
@@ -729,15 +729,27 @@ class Heatmap_Leben_Admin
     public function ajax_upload_screenshot()
     {
         check_ajax_referer('heatmap_leben_admin', 'nonce');
-        if (!current_user_can('manage_options')) wp_send_json_error('forbidden', 403);
 
-        $page_url = isset($_POST['page_url']) ? esc_url_raw($_POST['page_url']) : '';
-        if (empty($page_url)) wp_send_json_error('missing page_url', 400);
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Forbidden', 403);
+        }
+
+        // 🎯 OBTENER Y NORMALIZAR URL
+        $pageurl = isset($_POST['pageurl']) ? wp_unslash($_POST['pageurl']) : '';
+
+        if (empty($pageurl)) {
+            wp_send_json_error('missing pageurl', 400);
+        }
+
+        // 🎯 NORMALIZAR: Solo la URL sin query strings
+        $pageurl = strtok($pageurl, '?');
+        $pageurl = esc_url_raw($pageurl);
 
         if (empty($_FILES['screenshot'])) {
             wp_send_json_error('No file uploaded', 400);
         }
 
+        // Handle upload
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/image.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';
@@ -750,25 +762,36 @@ class Heatmap_Leben_Admin
         }
 
         // Create attachment
-        $attachment_id = wp_insert_attachment([
-            'post_mime_type' => $upload['type'],
-            'post_title' => 'Screenshot - ' . $page_url,
-            'post_content' => '',
-            'post_status' => 'inherit'
-        ], $upload['file']);
+        $attachment_id = wp_insert_attachment(
+            [
+                'post_mime_type' => $upload['type'],
+                'post_title' => 'Screenshot - ' . $pageurl,
+                'post_content' => '',
+                'post_status' => 'inherit',
+            ],
+            $upload['file']
+        );
 
-        wp_update_attachment_metadata($attachment_id, wp_generate_attachment_metadata($attachment_id, $upload['file']));
+        if (is_wp_error($attachment_id)) {
+            wp_send_json_error($attachment_id->get_error_message(), 400);
+        }
 
-        // Save mapping URL -> attachment_id
+        // Generate attachment metadata
+        wp_update_attachment_metadata(
+            $attachment_id,
+            wp_generate_attachment_metadata($attachment_id, $upload['file'])
+        );
+
+        // Save screenshot URL to pageurl mapping
         $screenshots = get_option('heatmap_leben_screenshots', []);
-        $screenshots[$page_url] = $attachment_id;
+        $screenshots[$pageurl] = $attachment_id;
         update_option('heatmap_leben_screenshots', $screenshots);
 
         wp_send_json_success([
             'attachment_id' => $attachment_id,
             'url' => wp_get_attachment_url($attachment_id),
             'width' => wp_get_attachment_metadata($attachment_id)['width'] ?? 0,
-            'height' => wp_get_attachment_metadata($attachment_id)['height'] ?? 0
+            'height' => wp_get_attachment_metadata($attachment_id)['height'] ?? 0,
         ]);
     }
 
