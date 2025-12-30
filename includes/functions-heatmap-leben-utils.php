@@ -32,6 +32,16 @@ function heatmap_leben_sanitize_settings($input)
     return $out;
 }
 
+function heatmap_leben_normalize_url($url)
+{
+    if (empty($url)) return '';
+    // Eliminar query string y fragment
+    $url = strtok($url, '?');
+    $url = strtok($url, '#');
+    // Eliminar trailing slash para mayor consistencia
+    return rtrim($url, '/');
+}
+
 function heatmap_leben_is_bot_user_agent($ua)
 {
     $settings = heatmap_leben_get_settings();

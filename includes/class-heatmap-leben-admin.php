@@ -18,6 +18,7 @@ class Heatmap_Leben_Admin
         add_action('wp_ajax_hm_leben_delete_data', [$this, 'ajax_delete_data']);
         add_action('wp_ajax_hm_leben_upload_screenshot', [$this, 'ajax_upload_screenshot']);
         add_action('wp_ajax_hm_leben_get_screenshot', [$this, 'ajax_get_screenshot']);
+        add_action('wp_ajax_hm_leben_normalize_urls', [$this, 'ajax_normalize_urls']);
         add_action('wp_ajax_hm_leben_event', [$this, 'ajax_hm_leben_event']);
         add_action('wp_ajax_nopriv_hm_leben_event', [$this, 'ajax_hm_leben_event']);
     }
@@ -90,6 +91,12 @@ class Heatmap_Leben_Admin
                 <button class="button" id="hm-refresh">Actualizar</button>
                 <button class="button" id="hm-export-img">Exportar imagen</button>
                 <button class="button" id="hm-export-csv">Exportar CSV</button>
+                <div class="hm-scale-control">
+                    <label for="hm-scale-slider">
+                        Escala: <span id="hm-scale-value">50%</span>
+                    </label>
+                    <input type="range" id="hm-scale-slider" min="10" max="200" value="50" step="5" />
+                </div>
                 <button class="button button-secondary" id="hm-test-data">Generar datos de prueba</button>
             </div>
             <div class="hm-canvas-container">
@@ -199,211 +206,244 @@ class Heatmap_Leben_Admin
                         </tr>
                     </tbody>
                 </table>
-            </div>
 
-            <script>
-                jQuery(document).ready(function($) {
-                    const screenshots = <?php echo json_encode(get_option('heatmap_leben_screenshots', [])); ?>;
+                <script>
+                    jQuery(document).ready(function($) {
+                        const screenshots = <?php echo json_encode(get_option('heatmap_leben_screenshots', [])); ?>;
 
-                    $('#hm-delete-data').on('click', function() {
-                        const from = $('#hm-delete-from').val();
-                        const to = $('#hm-delete-to').val();
+                        $('#hm-delete-data').on('click', function() {
+                            const from = $('#hm-delete-from').val();
+                            const to = $('#hm-delete-to').val();
 
-                        if (!from || !to) {
-                            alert('<?php echo esc_js(__('Por favor selecciona ambas fechas', 'heatmap-leben')); ?>');
-                            return;
-                        }
-
-                        if (!confirm('<?php echo esc_js(__('¿Estás seguro de que deseas eliminar estos datos? Esta acción no se puede deshacer.', 'heatmap-leben')); ?>')) {
-                            return;
-                        }
-
-                        $.post(ajaxurl, {
-                            action: 'hm_leben_delete_data',
-                            nonce: '<?php echo wp_create_nonce('heatmap_leben_delete'); ?>',
-                            from: from,
-                            to: to
-                        }).done(function(res) {
-                            if (res.success) {
-                                $('#hm-delete-result').html('<p style="color:green;">' + res.data.message + '</p>');
-                            } else {
-                                $('#hm-delete-result').html('<p style="color:red;">' + res.data + '</p>');
+                            if (!from || !to) {
+                                alert('<?php echo esc_js(__('Por favor selecciona ambas fechas', 'heatmap-leben')); ?>');
+                                return;
                             }
+
+                            if (!confirm('<?php echo esc_js(__('¿Estás seguro de que deseas eliminar estos datos? Esta acción no se puede deshacer.', 'heatmap-leben')); ?>')) {
+                                return;
+                            }
+
+                            $.post(ajaxurl, {
+                                action: 'hm_leben_delete_data',
+                                nonce: '<?php echo wp_create_nonce('heatmap_leben_delete'); ?>',
+                                from: from,
+                                to: to
+                            }).done(function(res) {
+                                if (res.success) {
+                                    $('#hm-delete-result').html('<p style="color:green;">' + res.data.message + '</p>');
+                                } else {
+                                    $('#hm-delete-result').html('<p style="color:red;">' + res.data + '</p>');
+                                }
+                            });
                         });
-                    });
 
-                    $('#hm-load-pages').on('click', function() {
-                        $(this).prop('disabled', true).text('Cargando...');
-                        $.post(ajaxurl, {
-                            action: 'hm_leben_list_pages',
-                            nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>'
-                        }).done(function(res) {
-                            if (res && res.success && res.data.length) {
-                                const tbody = $('#hm-screenshots-table tbody');
-                                tbody.empty();
+                        $('#hm-normalize-urls').on('click', function() {
+                            if (!confirm('<?php echo esc_js(__('¿Normalizar todas las URLs en la base de datos? Esto eliminará los parámetros de query string de todas las URLs registradas.', 'heatmap-leben')); ?>')) {
+                                return;
+                            }
 
-                                res.data.forEach(function(page, idx) {
-                                    const hasScreenshot = screenshots[page.page_url];
+                            $(this).prop('disabled', true).text('Normalizando...');
+                            const btn = $(this);
 
-                                    const actions = $('<div>').append(
-                                        $('<input>').attr({
-                                            type: 'file',
-                                            accept: 'image/*',
-                                            id: 'file-' + idx,
-                                            'data-url': page.page_url,
-                                            style: 'display:none;'
-                                        }),
-                                        $('<button>').addClass('button button-small upload-screenshot')
-                                        .attr('data-idx', idx)
-                                        .attr('data-url', page.page_url)
-                                        .text('Subir'),
-                                        $('<button>').addClass('button button-small select-library')
-                                        .attr('data-idx', idx)
-                                        .attr('data-url', page.page_url)
-                                        .css('margin-left', '6px')
-                                        .text('Biblioteca')
+                            $.post(ajaxurl, {
+                                action: 'hm_leben_normalize_urls',
+                                nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>'
+                            }).done(function(res) {
+                                if (res.success) {
+                                    $('#hm-normalize-result').html(
+                                        '<p style="color:green;"><strong>✓ Éxito</strong></p>' +
+                                        '<p>' + res.data.message + '</p>'
                                     );
+                                } else {
+                                    $('#hm-normalize-result').html('<p style="color:red;"><strong>✗ Error:</strong> ' + res.data + '</p>');
+                                }
+                            }).fail(function() {
+                                $('#hm-normalize-result').html('<p style="color:red;"><strong>✗ Error:</strong> No se pudo conectar al servidor</p>');
+                            }).always(function() {
+                                btn.prop('disabled', false).text('<?php echo esc_js(__('Normalizar URLs', 'heatmap-leben')); ?>');
+                            });
+                        });
 
-                                    const row = $('<tr>').append(
-                                        $('<td>').append(
-                                            $('<a>').attr('href', page.page_url).attr('target', '_blank').text(page.page_url)
-                                        ),
-                                        $('<td>').text(page.c),
-                                        $('<td>').attr('id', 'screenshot-status-' + idx).html(
-                                            hasScreenshot ?
-                                            '<span style="color:green;">✓ Cargado</span> <a href="#" class="preview-screenshot" data-url="' + page.page_url + '">Ver</a>' :
-                                            '<span style="color:#999;">Sin screenshot</span>'
-                                        ),
-                                        $('<td>').append(actions)
-                                    );
-                                    tbody.append(row);
-                                });
+                        $('#hm-load-pages').on('click', function() {
+                            $(this).prop('disabled', true).text('Cargando...');
+                            $.post(ajaxurl, {
+                                action: 'hm_leben_list_pages',
+                                nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>'
+                            }).done(function(res) {
+                                if (res && res.success && res.data.length) {
+                                    const tbody = $('#hm-screenshots-table tbody');
+                                    tbody.empty();
 
-                                // Eventos para upload
-                                $('.upload-screenshot').off('click').on('click', function() {
-                                    const idx = $(this).data('idx');
-                                    $('#file-' + idx).click();
-                                });
+                                    res.data.forEach(function(page, idx) {
+                                        const hasScreenshot = screenshots[page.page_url];
 
-                                $('input[type="file"]').off('change').on('change', function() {
-                                    const file = this.files[0];
-                                    const url = $(this).data('url');
-                                    const idx = this.id.split('-')[1];
+                                        const actions = $('<div>').append(
+                                            $('<input>').attr({
+                                                type: 'file',
+                                                accept: 'image/*',
+                                                id: 'file-' + idx,
+                                                'data-url': page.page_url,
+                                                style: 'display:none;'
+                                            }),
+                                            $('<button>').addClass('button button-small upload-screenshot')
+                                            .attr('data-idx', idx)
+                                            .attr('data-url', page.page_url)
+                                            .text('Subir'),
+                                            $('<button>').addClass('button button-small select-library')
+                                            .attr('data-idx', idx)
+                                            .attr('data-url', page.page_url)
+                                            .css('margin-left', '6px')
+                                            .text('Biblioteca')
+                                        );
 
-                                    if (!file) return;
-
-                                    const formData = new FormData();
-                                    formData.append('action', 'hm_leben_upload_screenshot');
-                                    formData.append('nonce', '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>');
-                                    formData.append('page_url', url);
-                                    formData.append('screenshot', file);
-
-                                    $('#screenshot-status-' + idx).html('<span style="color:#999;">Subiendo...</span>');
-
-                                    $.ajax({
-                                        url: ajaxurl,
-                                        type: 'POST',
-                                        data: formData,
-                                        processData: false,
-                                        contentType: false,
-                                        success: function(res) {
-                                            if (res && res.success) {
-                                                $('#screenshot-status-' + idx).html(
-                                                    '<span style="color:green;">✓ Cargado (' + res.data.width + 'x' + res.data.height + ')</span> ' +
-                                                    '<a href="' + res.data.url + '" target="_blank">Ver</a>'
-                                                );
-                                                screenshots[url] = res.data.attachment_id;
-                                            } else {
-                                                $('#screenshot-status-' + idx).html('<span style="color:red;">✗ Error</span>');
-                                            }
-                                        },
-                                        error: function() {
-                                            $('#screenshot-status-' + idx).html('<span style="color:red;">✗ Error</span>');
-                                        }
+                                        const row = $('<tr>').append(
+                                            $('<td>').append(
+                                                $('<a>').attr('href', page.page_url).attr('target', '_blank').text(page.page_url)
+                                            ),
+                                            $('<td>').text(page.c),
+                                            $('<td>').attr('id', 'screenshot-status-' + idx).html(
+                                                hasScreenshot ?
+                                                '<span style="color:green;">✓ Cargado</span> <a href="#" class="preview-screenshot" data-url="' + page.page_url + '">Ver</a>' :
+                                                '<span style="color:#999;">Sin screenshot</span>'
+                                            ),
+                                            $('<td>').append(actions)
+                                        );
+                                        tbody.append(row);
                                     });
-                                });
 
-                                // Selector de biblioteca
-                                let mediaFrame = null;
-                                let mediaTarget = {
-                                    idx: null,
-                                    url: ''
-                                };
+                                    // Eventos para upload
+                                    $('.upload-screenshot').off('click').on('click', function() {
+                                        const idx = $(this).data('idx');
+                                        $('#file-' + idx).click();
+                                    });
 
-                                $(document).off('click', '.select-library').on('click', '.select-library', function(e) {
-                                    e.preventDefault();
-                                    mediaTarget = {
-                                        idx: $(this).data('idx'),
-                                        url: $(this).data('url')
-                                    };
+                                    $('input[type="file"]').off('change').on('change', function() {
+                                        const file = this.files[0];
+                                        const url = $(this).data('url');
+                                        const idx = this.id.split('-')[1];
 
-                                    if (!mediaFrame) {
-                                        mediaFrame = wp.media({
-                                            title: 'Selecciona una imagen',
-                                            button: {
-                                                text: 'Usar esta imagen'
-                                            },
-                                            multiple: false
-                                        });
+                                        if (!file) return;
 
-                                        mediaFrame.on('select', function() {
-                                            const attachment = mediaFrame.state().get('selection').first().toJSON();
-                                            if (!attachment || !attachment.id) return;
+                                        const formData = new FormData();
+                                        formData.append('action', 'hm_leben_upload_screenshot');
+                                        formData.append('nonce', '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>');
+                                        formData.append('page_url', url);
+                                        formData.append('screenshot', file);
 
-                                            $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:#999;">Guardando...</span>');
+                                        $('#screenshot-status-' + idx).html('<span style="color:#999;">Subiendo...</span>');
 
-                                            $.post(ajaxurl, {
-                                                action: 'hm_leben_upload_screenshot',
-                                                nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>',
-                                                page_url: mediaTarget.url,
-                                                attachment_id: attachment.id
-                                            }).done(function(res) {
+                                        $.ajax({
+                                            url: ajaxurl,
+                                            type: 'POST',
+                                            data: formData,
+                                            processData: false,
+                                            contentType: false,
+                                            success: function(res) {
                                                 if (res && res.success) {
-                                                    $('#screenshot-status-' + mediaTarget.idx).html(
+                                                    $('#screenshot-status-' + idx).html(
                                                         '<span style="color:green;">✓ Cargado (' + res.data.width + 'x' + res.data.height + ')</span> ' +
                                                         '<a href="' + res.data.url + '" target="_blank">Ver</a>'
                                                     );
-                                                    screenshots[mediaTarget.url] = res.data.attachment_id;
+                                                    screenshots[url] = res.data.attachment_id;
                                                 } else {
-                                                    $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:red;">✗ Error</span>');
+                                                    $('#screenshot-status-' + idx).html('<span style="color:red;">✗ Error</span>');
                                                 }
-                                            }).fail(function() {
-                                                $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:red;">✗ Error</span>');
-                                            });
+                                            },
+                                            error: function() {
+                                                $('#screenshot-status-' + idx).html('<span style="color:red;">✗ Error</span>');
+                                            }
                                         });
-                                    }
-
-                                    mediaFrame.open();
-                                });
-
-                                // Preview screenshots
-                                $(document).off('click', '.preview-screenshot').on('click', '.preview-screenshot', function(e) {
-                                    e.preventDefault();
-                                    const url = $(this).data('url');
-                                    $.post(ajaxurl, {
-                                        action: 'hm_leben_get_screenshot',
-                                        nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>',
-                                        page_url: url
-                                    }).done(function(res) {
-                                        if (res && res.success && res.data.exists) {
-                                            window.open(res.data.url, '_blank');
-                                        }
                                     });
-                                });
 
-                            } else {
-                                $('#hm-screenshots-table tbody').html(
-                                    '<tr><td colspan="4" style="text-align:center;">No hay páginas con datos</td></tr>'
-                                );
-                            }
-                        }).always(function() {
-                            $('#hm-load-pages').prop('disabled', false).text('Recargar páginas');
+                                    // Selector de biblioteca
+                                    let mediaFrame = null;
+                                    let mediaTarget = {
+                                        idx: null,
+                                        url: ''
+                                    };
+
+                                    $(document).off('click', '.select-library').on('click', '.select-library', function(e) {
+                                        e.preventDefault();
+                                        mediaTarget = {
+                                            idx: $(this).data('idx'),
+                                            url: $(this).data('url')
+                                        };
+
+                                        if (!mediaFrame) {
+                                            mediaFrame = wp.media({
+                                                title: 'Selecciona una imagen',
+                                                button: {
+                                                    text: 'Usar esta imagen'
+                                                },
+                                                multiple: false
+                                            });
+
+                                            mediaFrame.on('select', function() {
+                                                const attachment = mediaFrame.state().get('selection').first().toJSON();
+                                                if (!attachment || !attachment.id) return;
+
+                                                $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:#999;">Guardando...</span>');
+
+                                                $.post(ajaxurl, {
+                                                    action: 'hm_leben_upload_screenshot',
+                                                    nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>',
+                                                    page_url: mediaTarget.url,
+                                                    attachment_id: attachment.id
+                                                }).done(function(res) {
+                                                    if (res && res.success) {
+                                                        $('#screenshot-status-' + mediaTarget.idx).html(
+                                                            '<span style="color:green;">✓ Cargado (' + res.data.width + 'x' + res.data.height + ')</span> ' +
+                                                            '<a href="' + res.data.url + '" target="_blank">Ver</a>'
+                                                        );
+                                                        screenshots[mediaTarget.url] = res.data.attachment_id;
+                                                    } else {
+                                                        $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:red;">✗ Error</span>');
+                                                    }
+                                                }).fail(function() {
+                                                    $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:red;">✗ Error</span>');
+                                                });
+                                            });
+                                        }
+
+                                        mediaFrame.open();
+                                    });
+
+                                    // Preview screenshots
+                                    $(document).off('click', '.preview-screenshot').on('click', '.preview-screenshot', function(e) {
+                                        e.preventDefault();
+                                        const url = $(this).data('url');
+                                        $.post(ajaxurl, {
+                                            action: 'hm_leben_get_screenshot',
+                                            nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>',
+                                            page_url: url
+                                        }).done(function(res) {
+                                            if (res && res.success && res.data.exists) {
+                                                window.open(res.data.url, '_blank');
+                                            }
+                                        });
+                                    });
+
+                                } else {
+                                    $('#hm-screenshots-table tbody').html(
+                                        '<tr><td colspan="4" style="text-align:center;">No hay páginas con datos</td></tr>'
+                                    );
+                                }
+                            }).always(function() {
+                                $('#hm-load-pages').prop('disabled', false).text('Recargar páginas');
+                            });
                         });
                     });
-                });
-            </script>
-        </div>
-<?php
+                </script>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background: #fff; border: 1px solid #c3c4c7;">
+                <h3><?php echo esc_html__('Normalizar URLs', 'heatmap-leben'); ?></h3>
+                <p><?php echo esc_html__('Elimina parámetros de query string de todas las URLs en la base de datos para agrupar correctamente los eventos.', 'heatmap-leben'); ?></p>
+                <button type="button" class="button button-primary" id="hm-normalize-urls"><?php echo esc_html__('Normalizar URLs', 'heatmap-leben'); ?></button>
+                <div id="hm-normalize-result" style="margin-top: 15px;"></div>
+            </div>
+    <?php
     }
 
     public function ajax_list_pages()
@@ -416,13 +456,37 @@ class Heatmap_Leben_Admin
         // First, check total count
         $total = $wpdb->get_var("SELECT COUNT(*) FROM {$table}");
 
-        // Get unique pages
-        $rows = $wpdb->get_results("SELECT page_url, COALESCE(page_id, 0) as page_id, COUNT(*) as c FROM {$table} GROUP BY page_url, page_id ORDER BY c DESC LIMIT 500", ARRAY_A);
-        if (empty($rows)) {
+        // Get all pages and normalize URLs in PHP to group them
+        $rows = $wpdb->get_results("SELECT page_url, COALESCE(page_id, 0) as page_id FROM {$table}", ARRAY_A);
+
+        // Agrupar por URL normalizada
+        $grouped = [];
+        foreach ($rows as $row) {
+            $normalized = heatmap_leben_normalize_url($row['page_url']);
+            if (!isset($grouped[$normalized])) {
+                $grouped[$normalized] = [
+                    'page_url' => $normalized,
+                    'page_id' => $row['page_id'],
+                    'c' => 0
+                ];
+            }
+            $grouped[$normalized]['c']++;
+        }
+
+        // Convertir a array y ordenar por conteo
+        $result = array_values($grouped);
+        usort($result, function ($a, $b) {
+            return $b['c'] - $a['c'];
+        });
+
+        // Limitar a 500
+        $result = array_slice($result, 0, 500);
+
+        if (empty($result)) {
             error_log("Heatmap: Last error = " . $wpdb->last_error);
         }
 
-        wp_send_json_success($rows);
+        wp_send_json_success($result);
     }
 
     public function ajax_hm_leben_event()
@@ -743,6 +807,52 @@ class Heatmap_Leben_Admin
             }
 
             wp_send_json_success(['inserted' => $inserted]);
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage(), 500);
+        }
+    }
+
+    public function ajax_normalize_urls()
+    {
+        check_ajax_referer('heatmap_leben_admin', 'nonce');
+        if (!current_user_can('manage_options')) wp_send_json_error('forbidden', 403);
+
+        try {
+            global $wpdb;
+            $table = Heatmap_Leben_Activator::table_name();
+
+            // Obtener todas las URLs
+            $rows = $wpdb->get_results("SELECT DISTINCT page_url FROM {$table}", ARRAY_A);
+
+            $updated = 0;
+            $normalized_map = [];
+
+            // Para cada URL única, normalizar y actualizar
+            foreach ($rows as $row) {
+                $original = $row['page_url'];
+                $normalized = heatmap_leben_normalize_url($original);
+
+                // Si la URL cambió, actualizar
+                if ($original !== $normalized) {
+                    $wpdb->update(
+                        $table,
+                        ['page_url' => $normalized],
+                        ['page_url' => $original],
+                        ['%s'],
+                        ['%s']
+                    );
+                    $updated++;
+                    error_log("Normalized: {$original} -> {$normalized}");
+                }
+            }
+
+            wp_send_json_success([
+                'message' => sprintf(
+                    __('%d URLs fueron normalizadas en la base de datos.', 'heatmap-leben'),
+                    $updated
+                ),
+                'updated' => $updated
+            ]);
         } catch (Exception $e) {
             wp_send_json_error($e->getMessage(), 500);
         }

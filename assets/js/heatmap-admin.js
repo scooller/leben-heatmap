@@ -7,7 +7,8 @@
         canvas: null,
         ctx: null,
         screenshotWidth: 0,
-        screenshotHeight: 0
+        screenshotHeight: 0,
+        scale: 0.5
     };
 
     const els = {};
@@ -24,6 +25,8 @@
         els.hm = $('#hm-heatmap');
         els.stats = $('#hm-stats');
         els.screenshotStatus = $('#hm-screenshot-status');
+        els.scaleSlider = $('#hm-scale-slider');
+        els.scaleValue = $('#hm-scale-value');
 
         S.canvas = document.createElement('canvas');
         S.ctx = S.canvas.getContext('2d');
@@ -45,6 +48,13 @@
         els.exportImg.on('click', exportImage);
         els.exportCsv.on('click', exportCsv);
         els.testData.on('click', generateTestData);
+        
+        els.scaleSlider.on('input', function() {
+            const scalePercent = parseInt($(this).val());
+            S.scale = scalePercent / 100;
+            els.scaleValue.text(scalePercent + '%');
+            applyScale();
+        });
     }
 
     function loadPages() {
@@ -150,14 +160,30 @@
                 console.log('Screenshot response:', res);
 
                 if (res && res.success && res.data && res.data.exists) {
+                    // Capturar dimensiones del servidor
+                    const serverWidth = res.data.width;
+                    const serverHeight = res.data.height;
+                    console.log('📊 Server dimensions available:', serverWidth, 'x', serverHeight);
+
                     els.screenshot
                         .attr('src', res.data.url)
                         .show()
                         .off('load error') // Prevenir múltiples bindings
                         .on('load', function () {
-                            S.screenshotWidth = this.naturalWidth || this.width;
-                            S.screenshotHeight = this.naturalHeight || this.height;
-                            console.log('📸 Screenshot loaded with real dimensions:', S.screenshotWidth, 'x', S.screenshotHeight);
+                            // Intentar obtener dimensiones del navegador
+                            const browserWidth = this.naturalWidth || this.width;
+                            const browserHeight = this.naturalHeight || this.height;
+
+                            // Si el navegador reporta 0x0 (imagen muy grande), usar dimensiones del servidor
+                            if (browserWidth === 0 || browserHeight === 0) {
+                                S.screenshotWidth = serverWidth;
+                                S.screenshotHeight = serverHeight;
+                                console.log('📸 Using server dimensions (browser reported 0x0):', S.screenshotWidth, 'x', S.screenshotHeight);
+                            } else {
+                                S.screenshotWidth = browserWidth;
+                                S.screenshotHeight = browserHeight;
+                                console.log('📸 Using browser dimensions:', S.screenshotWidth, 'x', S.screenshotHeight);
+                            }
 
                             // 🎯 RENDER SI HAY PUNTOS
                             if (S.points.length > 0) {
@@ -201,54 +227,67 @@
     }
 
     function computeDocSize() {
-        console.log('Screenshot info:', {
-            width: S.screenshotWidth,
-            height: S.screenshotHeight,
-            screenshot: els.screenshot.attr('src') ? 'loaded' : 'missing',
-            points: S.points.length
-        });
-
+        // Usar dimensiones reales del screenshot si existe
         if (S.screenshotWidth > 0 && S.screenshotHeight > 0) {
             S.docW = S.screenshotWidth;
             S.docH = S.screenshotHeight;
             console.log('✅ Using screenshot dimensions:', S.docW, 'x', S.docH);
         } else {
-            let maxX = 0, maxY = 0, maxVW = 0, maxVH = 0;
+            // Obtener dimensiones de la página desde los datos capturados
+            let maxPageW = 0, maxPageH = 0;
             for (const p of S.points) {
-                const X = Number(p.x) + Number(p.scroll_x);
-                const Y = Number(p.y) + Number(p.scroll_y);
-                if (X > maxX) maxX = X;
-                if (Y > maxY) maxY = Y;
-                if (Number(p.viewport_w) > maxVW) maxVW = Number(p.viewport_w);
-                if (Number(p.viewport_h) > maxVH) maxVH = Number(p.viewport_h);
+                const pw = Number(p.page_width || p.viewport_w || 0);
+                const ph = Number(p.page_height || 0);
+                if (pw > maxPageW) maxPageW = pw;
+                if (ph > maxPageH) maxPageH = ph;
             }
-            S.docW = maxVW || 1280;
-            S.docH = Math.max(maxVH, maxY + 400, 800);
-            console.log('📐 Fallback dimensions:', S.docW, 'x', S.docH);
+            
+            // Usar dimensiones reales de la BD o valores por defecto
+            S.docW = maxPageW > 0 ? maxPageW : 1920;
+            S.docH = maxPageH > 0 ? maxPageH : 4000;
+            console.log('📐 Using page dimensions from DB:', S.docW, 'x', S.docH);
         }
 
         if (S.canvas && els.hm.length) {
-            // Canvas nativo
+            // Canvas nativo (tamaño real)
             S.canvas.width = S.docW;
             S.canvas.height = S.docH;
 
-            // Canvas CSS
-            S.canvas.style.width = S.docW + 'px';
-            S.canvas.style.height = S.docH + 'px';
+            console.log('✅ Canvas set to real size:', S.docW, 'x', S.docH);
 
-            // Contenedor
-            els.hm.css({
-                width: S.docW + 'px',
-                height: S.docH + 'px'
-            });
-
-            console.log('✅ Container resized:', S.docW, 'x', S.docH);
-
-            // 🎯 LLAMAR RENDER DIRECTAMENTE (sin setTimeout)
+            // Aplicar escala y renderizar
+            applyScale();
             renderHeatmap();
         }
     }
 
+
+    function applyScale() {
+        if (!S.canvas || !els.hm.length || S.docW === 0 || S.docH === 0) {
+            return;
+        }
+
+        const scaledW = Math.round(S.docW * S.scale);
+        const scaledH = Math.round(S.docH * S.scale);
+
+        // Canvas CSS (tamaño visual con escala)
+        S.canvas.style.width = scaledW + 'px';
+        S.canvas.style.height = scaledH + 'px';
+
+        // Screenshot con escala
+        els.screenshot.css({
+            width: scaledW + 'px',
+            height: scaledH + 'px'
+        });
+
+        // Contenedor con escala
+        els.hm.css({
+            width: scaledW + 'px',
+            height: scaledH + 'px'
+        });
+
+        console.log('🔧 Scale applied:', S.scale, '| Display size:', scaledW, 'x', scaledH);
+    }
 
     function renderHeatmap() {
         console.log('🚀 renderHeatmap() EXECUTED');

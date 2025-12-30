@@ -7,16 +7,27 @@ Plugin de WordPress para capturar y visualizar mapas de calor de múltiples pág
 - ✅ Captura de clicks y movimientos (muestreados) en frontend.
 - ✅ Agrupación por URL de página.
 - ✅ **Captura automática de altura real de la página** (scrollHeight).
+- ✅ **Slider de escala interactivo** para zoom del heatmap (10%-200%).
+- ✅ **Normalización automática de URLs** para evitar duplicados con query strings.
 - ✅ Panel de administración con:
   - Selector de página y rango de fechas.
   - Filtro por tipo de evento (clicks, movimientos, todos).
+  - **Control de escala visual del heatmap**.
   - Visualización del mapa sobre la página en canvas interactivo.
   - Exportación de imagen (PNG) del heatmap (capa de calor).
   - Exportación CSV de eventos crudos.
   - Visualización de estadísticas (total eventos, clicks, movimientos, sesiones únicas).
   - Gestión de screenshots de páginas para mejor visualización.
+  - **Normalización de URLs en base de datos**.
 - ✅ Datos sin PII: se usa un ID de sesión aleatorio almacenado localmente.
 - ✅ Renderizado con canvas nativo (sin dependencias externas).
+
+## Novedades v1.2.0
+
+- 🎚️ **Slider de Escala:** Control deslizante para ajustar el zoom del heatmap entre 10% y 200% (por defecto 50%).
+- 📐 **Tamaño Real de Página:** El heatmap ahora utiliza las dimensiones reales de la página capturada desde la base de datos.
+- 🔗 **Normalización de URLs:** Nueva funcionalidad para eliminar parámetros de query string y agrupar correctamente eventos duplicados.
+- ✨ **Interfaz Mejorada:** Mejor organización de los controles en la barra de herramientas.
 
 ## Instalación
 
