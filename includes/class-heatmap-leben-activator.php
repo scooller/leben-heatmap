@@ -16,6 +16,7 @@ class Heatmap_Leben_Activator
         page_url TEXT NOT NULL,
         page_id BIGINT NULL,
         event_type VARCHAR(20) NOT NULL,
+        device_type VARCHAR(20) NOT NULL DEFAULT 'desktop',
         x INT NOT NULL,
         y INT NOT NULL,
         viewport_w INT NOT NULL,
@@ -28,6 +29,7 @@ class Heatmap_Leben_Activator
         created_at DATETIME NOT NULL,
         PRIMARY KEY (id),
         KEY idx_page_id (page_id),
+        KEY idx_device_type (device_type),
         KEY idx_created_at (created_at)
         ) $charset_collate;";
 
@@ -40,6 +42,16 @@ class Heatmap_Leben_Activator
             // Force create if dbDelta failed
             $wpdb->query($sql);
         }
+
+        // Add device_type column if it doesn't exist
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM `$table` LIKE 'device_type'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE `$table` ADD COLUMN `device_type` VARCHAR(20) NOT NULL DEFAULT 'desktop' AFTER `event_type`");
+            $wpdb->query("ALTER TABLE `$table` ADD INDEX `idx_device_type` (`device_type`)");
+        }
+
+        // Migración: Actualizar registros existentes sin device_type
+        $wpdb->query("UPDATE $table SET device_type = 'desktop' WHERE device_type IS NULL OR device_type = ''");
     }
 
     public static function table_name()

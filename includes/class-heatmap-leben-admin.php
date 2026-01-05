@@ -19,6 +19,7 @@ class Heatmap_Leben_Admin
         add_action('wp_ajax_hm_leben_upload_screenshot', [$this, 'ajax_upload_screenshot']);
         add_action('wp_ajax_hm_leben_get_screenshot', [$this, 'ajax_get_screenshot']);
         add_action('wp_ajax_hm_leben_normalize_urls', [$this, 'ajax_normalize_urls']);
+        add_action('wp_ajax_hm_leben_migrate_device_type', [$this, 'ajax_migrate_device_type']);
         add_action('wp_ajax_hm_leben_event', [$this, 'ajax_hm_leben_event']);
         add_action('wp_ajax_nopriv_hm_leben_event', [$this, 'ajax_hm_leben_event']);
     }
@@ -86,6 +87,13 @@ class Heatmap_Leben_Admin
                         <option value="click" selected>Clics</option>
                         <option value="move">Movimientos</option>
                         <option value="all">Todos</option>
+                    </select>
+                </label>
+                <label style="margin-left: 15px;">
+                    <select id="hm-device-type">
+                        <option value="all">Todos los dispositivos</option>
+                        <option value="desktop" selected>Desktop</option>
+                        <option value="mobile">Mobile</option>
                     </select>
                 </label>
                 <button class="button" id="hm-refresh">Actualizar</button>
@@ -188,14 +196,14 @@ class Heatmap_Leben_Admin
 
             <div style="margin-top: 30px; padding: 20px; background: #fff; border: 1px solid #c3c4c7;">
                 <h3><?php echo esc_html__('Screenshots de Páginas', 'heatmap-leben'); ?></h3>
-                <p><?php echo esc_html__('Sube un screenshot para cada página para visualizar el heatmap sobre la imagen real.', 'heatmap-leben'); ?></p>
+                <p><?php echo esc_html__('Sube screenshots para cada página y dispositivo para visualizar el heatmap sobre la imagen real.', 'heatmap-leben'); ?></p>
                 <table class="wp-list-table widefat fixed striped" id="hm-screenshots-table">
                     <thead>
                         <tr>
-                            <th style="width: 50%;"><?php echo esc_html__('Página', 'heatmap-leben'); ?></th>
-                            <th style="width: 15%;"><?php echo esc_html__('Eventos', 'heatmap-leben'); ?></th>
-                            <th style="width: 20%;"><?php echo esc_html__('Screenshot', 'heatmap-leben'); ?></th>
-                            <th style="width: 15%;"><?php echo esc_html__('Acción', 'heatmap-leben'); ?></th>
+                            <th style="width: 40%;"><?php echo esc_html__('Página', 'heatmap-leben'); ?></th>
+                            <th style="width: 12%;"><?php echo esc_html__('Eventos', 'heatmap-leben'); ?></th>
+                            <th style="width: 24%;"><?php echo esc_html__('Desktop', 'heatmap-leben'); ?></th>
+                            <th style="width: 24%;"><?php echo esc_html__('Mobile', 'heatmap-leben'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -265,6 +273,33 @@ class Heatmap_Leben_Admin
                             });
                         });
 
+                        $('#hm-migrate-device-type').on('click', function() {
+                            if (!confirm('<?php echo esc_js(__('¿Migrar todos los eventos sin device_type? Esto asignará "desktop" como valor por defecto.', 'heatmap-leben')); ?>')) {
+                                return;
+                            }
+
+                            $(this).prop('disabled', true).text('Migrando...');
+                            const btn = $(this);
+
+                            $.post(ajaxurl, {
+                                action: 'hm_leben_migrate_device_type',
+                                nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>'
+                            }).done(function(res) {
+                                if (res.success) {
+                                    $('#hm-migrate-device-result').html(
+                                        '<p style="color:green;"><strong>✓ Éxito</strong></p>' +
+                                        '<p>' + res.data.message + '</p>'
+                                    );
+                                } else {
+                                    $('#hm-migrate-device-result').html('<p style="color:red;"><strong>✗ Error:</strong> ' + res.data + '</p>');
+                                }
+                            }).fail(function() {
+                                $('#hm-migrate-device-result').html('<p style="color:red;"><strong>✗ Error:</strong> No se pudo conectar al servidor</p>');
+                            }).always(function() {
+                                btn.prop('disabled', false).text('<?php echo esc_js(__('Migrar Device Type', 'heatmap-leben')); ?>');
+                            });
+                        });
+
                         $('#hm-load-pages').on('click', function() {
                             $(this).prop('disabled', true).text('Cargando...');
                             $.post(ajaxurl, {
@@ -276,24 +311,72 @@ class Heatmap_Leben_Admin
                                     tbody.empty();
 
                                     res.data.forEach(function(page, idx) {
-                                        const hasScreenshot = screenshots[page.page_url];
+                                        // Crear columnas para Desktop y Mobile
+                                        const desktopKey = page.page_url + '_desktop';
+                                        const mobileKey = page.page_url + '_mobile';
+                                        const hasDesktop = screenshots[desktopKey];
+                                        const hasMobile = screenshots[mobileKey];
 
-                                        const actions = $('<div>').append(
-                                            $('<input>').attr({
-                                                type: 'file',
-                                                accept: 'image/*',
-                                                id: 'file-' + idx,
-                                                'data-url': page.page_url,
-                                                style: 'display:none;'
-                                            }),
+                                        // Crear inputs file para ambos dispositivos
+                                        const desktopInput = $('<input>').attr({
+                                            type: 'file',
+                                            accept: 'image/*',
+                                            id: 'file-' + idx + '-desktop',
+                                            'data-url': page.page_url,
+                                            'data-device': 'desktop',
+                                            style: 'display:none;'
+                                        });
+
+                                        const mobileInput = $('<input>').attr({
+                                            type: 'file',
+                                            accept: 'image/*',
+                                            id: 'file-' + idx + '-mobile',
+                                            'data-url': page.page_url,
+                                            'data-device': 'mobile',
+                                            style: 'display:none;'
+                                        });
+
+                                        // Columna Desktop
+                                        const desktopCol = $('<td>').attr('id', 'screenshot-status-' + idx + '-desktop').append(
+                                            desktopInput,
+                                            $('<div>').html(
+                                                hasDesktop ?
+                                                '<span style="color:green;">✓ Cargado</span><br><a href="#" class="preview-screenshot" data-url="' + page.page_url + '" data-device="desktop">Ver</a>' :
+                                                '<span style="color:#999;">Sin screenshot</span>'
+                                            ),
+                                            $('<br>'),
                                             $('<button>').addClass('button button-small upload-screenshot')
                                             .attr('data-idx', idx)
+                                            .attr('data-device', 'desktop')
                                             .attr('data-url', page.page_url)
                                             .text('Subir'),
+                                            ' ',
                                             $('<button>').addClass('button button-small select-library')
                                             .attr('data-idx', idx)
+                                            .attr('data-device', 'desktop')
                                             .attr('data-url', page.page_url)
-                                            .css('margin-left', '6px')
+                                            .text('Biblioteca')
+                                        );
+
+                                        // Columna Mobile
+                                        const mobileCol = $('<td>').attr('id', 'screenshot-status-' + idx + '-mobile').append(
+                                            mobileInput,
+                                            $('<div>').html(
+                                                hasMobile ?
+                                                '<span style="color:green;">✓ Cargado</span><br><a href="#" class="preview-screenshot" data-url="' + page.page_url + '" data-device="mobile">Ver</a>' :
+                                                '<span style="color:#999;">Sin screenshot</span>'
+                                            ),
+                                            $('<br>'),
+                                            $('<button>').addClass('button button-small upload-screenshot')
+                                            .attr('data-idx', idx)
+                                            .attr('data-device', 'mobile')
+                                            .attr('data-url', page.page_url)
+                                            .text('Subir'),
+                                            ' ',
+                                            $('<button>').addClass('button button-small select-library')
+                                            .attr('data-idx', idx)
+                                            .attr('data-device', 'mobile')
+                                            .attr('data-url', page.page_url)
                                             .text('Biblioteca')
                                         );
 
@@ -302,12 +385,8 @@ class Heatmap_Leben_Admin
                                                 $('<a>').attr('href', page.page_url).attr('target', '_blank').text(page.page_url)
                                             ),
                                             $('<td>').text(page.c),
-                                            $('<td>').attr('id', 'screenshot-status-' + idx).html(
-                                                hasScreenshot ?
-                                                '<span style="color:green;">✓ Cargado</span> <a href="#" class="preview-screenshot" data-url="' + page.page_url + '">Ver</a>' :
-                                                '<span style="color:#999;">Sin screenshot</span>'
-                                            ),
-                                            $('<td>').append(actions)
+                                            desktopCol,
+                                            mobileCol
                                         );
                                         tbody.append(row);
                                     });
@@ -315,12 +394,14 @@ class Heatmap_Leben_Admin
                                     // Eventos para upload
                                     $('.upload-screenshot').off('click').on('click', function() {
                                         const idx = $(this).data('idx');
-                                        $('#file-' + idx).click();
+                                        const device = $(this).data('device');
+                                        $('#file-' + idx + '-' + device).click();
                                     });
 
                                     $('input[type="file"]').off('change').on('change', function() {
                                         const file = this.files[0];
                                         const url = $(this).data('url');
+                                        const device = $(this).data('device');
                                         const idx = this.id.split('-')[1];
 
                                         if (!file) return;
@@ -329,9 +410,10 @@ class Heatmap_Leben_Admin
                                         formData.append('action', 'hm_leben_upload_screenshot');
                                         formData.append('nonce', '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>');
                                         formData.append('page_url', url);
+                                        formData.append('device_type', device);
                                         formData.append('screenshot', file);
 
-                                        $('#screenshot-status-' + idx).html('<span style="color:#999;">Subiendo...</span>');
+                                        $('#screenshot-status-' + idx + '-' + device).html('<span style="color:#999;">Subiendo...</span>');
 
                                         $.ajax({
                                             url: ajaxurl,
@@ -341,17 +423,18 @@ class Heatmap_Leben_Admin
                                             contentType: false,
                                             success: function(res) {
                                                 if (res && res.success) {
-                                                    $('#screenshot-status-' + idx).html(
-                                                        '<span style="color:green;">✓ Cargado (' + res.data.width + 'x' + res.data.height + ')</span> ' +
+                                                    $('#screenshot-status-' + idx + '-' + device).html(
+                                                        '<span style="color:green;">✓ Cargado (' + res.data.width + 'x' + res.data.height + ')</span><br>' +
                                                         '<a href="' + res.data.url + '" target="_blank">Ver</a>'
                                                     );
-                                                    screenshots[url] = res.data.attachment_id;
+                                                    const key = url + '_' + device;
+                                                    screenshots[key] = res.data.attachment_id;
                                                 } else {
-                                                    $('#screenshot-status-' + idx).html('<span style="color:red;">✗ Error</span>');
+                                                    $('#screenshot-status-' + idx + '-' + device).html('<span style="color:red;">✗ Error</span>');
                                                 }
                                             },
                                             error: function() {
-                                                $('#screenshot-status-' + idx).html('<span style="color:red;">✗ Error</span>');
+                                                $('#screenshot-status-' + idx + '-' + device).html('<span style="color:red;">✗ Error</span>');
                                             }
                                         });
                                     });
@@ -360,14 +443,16 @@ class Heatmap_Leben_Admin
                                     let mediaFrame = null;
                                     let mediaTarget = {
                                         idx: null,
-                                        url: ''
+                                        url: '',
+                                        device: ''
                                     };
 
                                     $(document).off('click', '.select-library').on('click', '.select-library', function(e) {
                                         e.preventDefault();
                                         mediaTarget = {
                                             idx: $(this).data('idx'),
-                                            url: $(this).data('url')
+                                            url: $(this).data('url'),
+                                            device: $(this).data('device')
                                         };
 
                                         if (!mediaFrame) {
@@ -383,25 +468,27 @@ class Heatmap_Leben_Admin
                                                 const attachment = mediaFrame.state().get('selection').first().toJSON();
                                                 if (!attachment || !attachment.id) return;
 
-                                                $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:#999;">Guardando...</span>');
+                                                $('#screenshot-status-' + mediaTarget.idx + '-' + mediaTarget.device).html('<span style="color:#999;">Guardando...</span>');
 
                                                 $.post(ajaxurl, {
                                                     action: 'hm_leben_upload_screenshot',
                                                     nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>',
                                                     page_url: mediaTarget.url,
+                                                    device_type: mediaTarget.device,
                                                     attachment_id: attachment.id
                                                 }).done(function(res) {
                                                     if (res && res.success) {
-                                                        $('#screenshot-status-' + mediaTarget.idx).html(
-                                                            '<span style="color:green;">✓ Cargado (' + res.data.width + 'x' + res.data.height + ')</span> ' +
+                                                        $('#screenshot-status-' + mediaTarget.idx + '-' + mediaTarget.device).html(
+                                                            '<span style="color:green;">✓ Cargado (' + res.data.width + 'x' + res.data.height + ')</span><br>' +
                                                             '<a href="' + res.data.url + '" target="_blank">Ver</a>'
                                                         );
-                                                        screenshots[mediaTarget.url] = res.data.attachment_id;
+                                                        const key = mediaTarget.url + '_' + mediaTarget.device;
+                                                        screenshots[key] = res.data.attachment_id;
                                                     } else {
-                                                        $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:red;">✗ Error</span>');
+                                                        $('#screenshot-status-' + mediaTarget.idx + '-' + mediaTarget.device).html('<span style="color:red;">✗ Error</span>');
                                                     }
                                                 }).fail(function() {
-                                                    $('#screenshot-status-' + mediaTarget.idx).html('<span style="color:red;">✗ Error</span>');
+                                                    $('#screenshot-status-' + mediaTarget.idx + '-' + mediaTarget.device).html('<span style="color:red;">✗ Error</span>');
                                                 });
                                             });
                                         }
@@ -413,10 +500,12 @@ class Heatmap_Leben_Admin
                                     $(document).off('click', '.preview-screenshot').on('click', '.preview-screenshot', function(e) {
                                         e.preventDefault();
                                         const url = $(this).data('url');
+                                        const device = $(this).data('device') || 'desktop';
                                         $.post(ajaxurl, {
                                             action: 'hm_leben_get_screenshot',
                                             nonce: '<?php echo wp_create_nonce('heatmap_leben_admin'); ?>',
-                                            page_url: url
+                                            page_url: url,
+                                            device_type: device
                                         }).done(function(res) {
                                             if (res && res.success && res.data.exists) {
                                                 window.open(res.data.url, '_blank');
@@ -442,6 +531,14 @@ class Heatmap_Leben_Admin
                 <p><?php echo esc_html__('Elimina parámetros de query string de todas las URLs en la base de datos para agrupar correctamente los eventos.', 'heatmap-leben'); ?></p>
                 <button type="button" class="button button-primary" id="hm-normalize-urls"><?php echo esc_html__('Normalizar URLs', 'heatmap-leben'); ?></button>
                 <div id="hm-normalize-result" style="margin-top: 15px;"></div>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background: #fff; border: 1px solid #c3c4c7;">
+                <h3><?php echo esc_html__('Migrar Device Type', 'heatmap-leben'); ?></h3>
+                <p><?php echo esc_html__('Agrega la columna device_type si no existe y asigna el valor "desktop" a todos los eventos que no tengan un tipo de dispositivo definido.', 'heatmap-leben'); ?></p>
+                <p><strong><?php echo esc_html__('⚠️ Ejecutar esto si ves errores de "Unknown column \'device_type\'"', 'heatmap-leben'); ?></strong></p>
+                <button type="button" class="button button-primary" id="hm-migrate-device-type"><?php echo esc_html__('Migrar Device Type', 'heatmap-leben'); ?></button>
+                <div id="hm-migrate-device-result" style="margin-top: 15px;"></div>
             </div>
     <?php
     }
@@ -520,6 +617,10 @@ class Heatmap_Leben_Admin
             $page_url = esc_url_raw($item['page']);
             $page_id = isset($item['pageId']) ? intval($item['pageId']) : 0;
             $event_type = sanitize_text_field($item['t']);
+            $device_type = isset($item['dt']) ? sanitize_text_field($item['dt']) : 'desktop';
+            if (!in_array($device_type, ['mobile', 'desktop'], true)) {
+                $device_type = 'desktop';
+            }
 
             $x = isset($item['x']) ? intval($item['x']) : 0;
             $y = isset($item['y']) ? intval($item['y']) : 0;
@@ -546,6 +647,7 @@ class Heatmap_Leben_Admin
                 'page_url' => $page_url,
                 'page_id' => $page_id,
                 'event_type' => $event_type,
+                'device_type' => $device_type,
                 'x' => $x,
                 'y' => $y,
                 'viewport_w' => $viewport_w,
@@ -559,6 +661,7 @@ class Heatmap_Leben_Admin
             ], [
                 '%s',
                 '%d',
+                '%s',
                 '%s',
                 '%d',
                 '%d',
@@ -595,6 +698,7 @@ class Heatmap_Leben_Admin
         $from = isset($_POST['from']) ? sanitize_text_field($_POST['from']) : '';
         $to = isset($_POST['to']) ? sanitize_text_field($_POST['to']) : '';
         $event_type = isset($_POST['event_type']) ? sanitize_text_field($_POST['event_type']) : 'click';
+        $device_type = isset($_POST['device_type']) ? sanitize_text_field($_POST['device_type']) : 'all';
 
         if (empty($page_url)) {
             wp_send_json_error('missing page_url', 400);
@@ -622,6 +726,12 @@ class Heatmap_Leben_Admin
             $params[] = $event_type;
         }
 
+        // 🎯 FILTRO DE DISPOSITIVO
+        if ($device_type !== 'all') {
+            $where .= " AND device_type = %s";
+            $params[] = $device_type;
+        }
+
         $sql = $wpdb->prepare(
             "SELECT x, y, viewport_w, viewport_h, scroll_x, scroll_y, page_height, density 
             FROM {$table} 
@@ -647,6 +757,8 @@ class Heatmap_Leben_Admin
         $page_url = isset($_POST['page_url']) ? esc_url_raw(wp_unslash($_POST['page_url'])) : '';
         $from = isset($_POST['from']) ? sanitize_text_field($_POST['from']) : '';
         $to = isset($_POST['to']) ? sanitize_text_field($_POST['to']) : '';
+        $device_type = isset($_POST['device_type']) ? sanitize_text_field($_POST['device_type']) : 'all';
+        $event_type = isset($_POST['event_type']) ? sanitize_text_field($_POST['event_type']) : 'click';
         if (empty($page_url)) wp_send_json_error('missing page_url', 400);
 
         global $wpdb;
@@ -660,6 +772,14 @@ class Heatmap_Leben_Admin
         if ($to) {
             $where[] = 'created_at <= %s';
             $params[] = $to . ' 23:59:59';
+        }
+        if ($device_type !== 'all') {
+            $where[] = 'device_type = %s';
+            $params[] = $device_type;
+        }
+        if ($event_type !== 'all') {
+            $where[] = 'event_type = %s';
+            $params[] = $event_type;
         }
         // Basic counts
         $sqlBase = $wpdb->prepare("SELECT COUNT(*) as total, SUM(event_type='click') as clicks, SUM(event_type='move') as moves, COUNT(DISTINCT session_id) as unique_sessions FROM {$table} WHERE " . implode(' AND ', $where), $params);
@@ -858,6 +978,41 @@ class Heatmap_Leben_Admin
         }
     }
 
+    public function ajax_migrate_device_type()
+    {
+        check_ajax_referer('heatmap_leben_admin', 'nonce');
+        if (!current_user_can('manage_options')) wp_send_json_error('forbidden', 403);
+
+        try {
+            global $wpdb;
+            $table = Heatmap_Leben_Activator::table_name();
+
+            // Add device_type column if it doesn't exist
+            $column_exists = $wpdb->get_results("SHOW COLUMNS FROM `$table` LIKE 'device_type'");
+            if (empty($column_exists)) {
+                $wpdb->query("ALTER TABLE `$table` ADD COLUMN `device_type` VARCHAR(20) NOT NULL DEFAULT 'desktop' AFTER `event_type`");
+                $wpdb->query("ALTER TABLE `$table` ADD INDEX `idx_device_type` (`device_type`)");
+            }
+
+            // Actualizar registros sin device_type
+            $updated = $wpdb->query(
+                "UPDATE {$table} 
+                SET device_type = 'desktop' 
+                WHERE device_type IS NULL OR device_type = ''"
+            );
+
+            wp_send_json_success([
+                'message' => sprintf(
+                    __('Columna device_type agregada/verificada. %d eventos fueron actualizados con device_type "desktop".', 'heatmap-leben'),
+                    $updated
+                ),
+                'updated' => $updated
+            ]);
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage(), 500);
+        }
+    }
+
     public function ajax_delete_data()
     {
         check_ajax_referer('heatmap_leben_delete', 'nonce');
@@ -909,6 +1064,12 @@ class Heatmap_Leben_Admin
         // 🎯 NORMALIZAR: Solo la URL sin query strings
         $pageurl = remove_query_arg([], $pageurl);
 
+        // 🎯 OBTENER DEVICE TYPE (mobile/desktop)
+        $device_type = isset($_POST['device_type']) ? sanitize_text_field($_POST['device_type']) : 'desktop';
+        if (!in_array($device_type, ['mobile', 'desktop'], true)) {
+            $device_type = 'desktop';
+        }
+
         if (empty($pageurl)) {
             error_log('Heatmap: Missing pageurl');
             wp_send_json_error('missing pageurl', 400);
@@ -925,7 +1086,8 @@ class Heatmap_Leben_Admin
             $meta = wp_get_attachment_metadata($attachment_id);
 
             $screenshots = get_option('heatmap_leben_screenshots', []);
-            $screenshots[$pageurl] = $attachment_id;
+            $key = $pageurl . '_' . $device_type;
+            $screenshots[$key] = $attachment_id;
             update_option('heatmap_leben_screenshots', $screenshots);
 
             wp_send_json_success([
@@ -958,7 +1120,7 @@ class Heatmap_Leben_Admin
         $attachment_id = wp_insert_attachment(
             [
                 'post_mime_type' => $upload['type'],
-                'post_title' => 'Screenshot - ' . $pageurl,
+                'post_title' => 'Screenshot - ' . $pageurl . ' (' . $device_type . ')',
                 'post_content' => '',
                 'post_status' => 'inherit',
             ],
@@ -974,9 +1136,10 @@ class Heatmap_Leben_Admin
         $meta = wp_generate_attachment_metadata($attachment_id, $upload['file']);
         wp_update_attachment_metadata($attachment_id, $meta);
 
-        // Save screenshot URL to pageurl mapping
+        // Save screenshot URL to pageurl mapping with device type
         $screenshots = get_option('heatmap_leben_screenshots', []);
-        $screenshots[$pageurl] = $attachment_id;
+        $key = $pageurl . '_' . $device_type;
+        $screenshots[$key] = $attachment_id;
         update_option('heatmap_leben_screenshots', $screenshots);
 
         wp_send_json_success([
@@ -993,10 +1156,17 @@ class Heatmap_Leben_Admin
         if (!current_user_can('manage_options')) wp_send_json_error('forbidden', 403);
 
         $page_url = isset($_POST['page_url']) ? esc_url_raw($_POST['page_url']) : '';
+        $device_type = isset($_POST['device_type']) ? sanitize_text_field($_POST['device_type']) : 'desktop';
+
+        if (!in_array($device_type, ['mobile', 'desktop'], true)) {
+            $device_type = 'desktop';
+        }
+
         if (empty($page_url)) wp_send_json_error('missing page_url', 400);
 
         $screenshots = get_option('heatmap_leben_screenshots', []);
-        $attachment_id = $screenshots[$page_url] ?? 0;
+        $key = $page_url . '_' . $device_type;
+        $attachment_id = $screenshots[$key] ?? 0;
 
         if (!$attachment_id || !wp_attachment_is_image($attachment_id)) {
             wp_send_json_success(['exists' => false]);

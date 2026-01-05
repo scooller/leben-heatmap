@@ -11,19 +11,42 @@ Plugin de WordPress para capturar y visualizar mapas de calor de múltiples pág
 - ✅ **Normalización automática de URLs** para evitar duplicados con query strings.
 - ✅ Panel de administración con:
   - Selector de página y rango de fechas.
+  - **Filtro por tipo de dispositivo** (mobile, desktop, todos).
   - Filtro por tipo de evento (clicks, movimientos, todos).
   - **Control de escala visual del heatmap**.
   - Visualización del mapa sobre la página en canvas interactivo.
   - Exportación de imagen (PNG) del heatmap (capa de calor).
   - Exportación CSV de eventos crudos.
   - Visualización de estadísticas (total eventos, clicks, movimientos, sesiones únicas).
-  - Gestión de screenshots de páginas para mejor visualización.
+  - **Gestión de screenshots por dispositivo** (móvil y desktop separados).
   - **Normalización de URLs en base de datos**.
 - ✅ Datos sin PII: se usa un ID de sesión aleatorio almacenado localmente.
 - ✅ Renderizado con canvas nativo (sin dependencias externas).
 
-## Novedades v1.2.0
+## Novedades
 
+### v1.3.2
+- 🔧 **Fix Device Type:** Solución completa para el error "Unknown column 'device_type'".
+- 🔄 **Migración Automática Mejorada:** El plugin ahora detecta y crea la columna device_type automáticamente al cargar.
+- 🛠️ **Script de Fix Rápido:** Incluye archivo fix-device-type.php para solución inmediata.
+- 📝 **Documentación Mejorada:** Guía completa de troubleshooting en el README.
+
+### v1.3.1
+- ⚡ **Indicador de Carga:** El botón "Actualizar" ahora muestra un spinner animado mientras carga datos.
+- 🖥️ **Filtro Desktop por Defecto:** El filtro de dispositivo ahora inicia en "Desktop" para mejor usabilidad.
+- 📅 **Fecha Automática:** El campo "hasta" se establece automáticamente al día de hoy.
+- 🔄 **Migración Automática:** Los eventos antiguos sin device_type se migran automáticamente a "desktop".
+
+### v1.3.0
+- 📱 **Separación Mobile/Desktop:** Ahora el plugin separa automáticamente los eventos entre dispositivos móviles (≤768px) y desktop.
+- 🎚️ **Filtro de Dispositivo:** Nuevo selector en la interfaz para visualizar el heatmap de mobile, desktop o ambos.
+- 📊 **Estadísticas por Dispositivo:** Las estadísticas se filtran según el dispositivo seleccionado.
+- 📸 **Screenshots por Dispositivo:** Gestión separada de screenshots para mobile y desktop.
+
+### v1.2.1
+- 🖼️ **Fix Imágenes Grandes:** Mejora en la carga de screenshots muy grandes (3000x10000+ px) usando dimensiones del servidor como fallback.
+
+### v1.2.0
 - 🎚️ **Slider de Escala:** Control deslizante para ajustar el zoom del heatmap entre 10% y 200% (por defecto 50%).
 - 📐 **Tamaño Real de Página:** El heatmap ahora utiliza las dimensiones reales de la página capturada desde la base de datos.
 - 🔗 **Normalización de URLs:** Nueva funcionalidad para eliminar parámetros de query string y agrupar correctamente eventos duplicados.
@@ -47,6 +70,7 @@ El plugin captura automáticamente:
 - Coordenadas relativas al viewport
 - Scroll horizontal y vertical
 - **Altura total de la página** (scrollHeight)
+- **Tipo de dispositivo** (mobile si viewport ≤ 768px, sino desktop)
 - Identificador de sesión única
 
 ### Panel de administración
@@ -55,7 +79,8 @@ El plugin captura automáticamente:
 2. Selecciona una **página** en el desplegable.
 3. (Opcional) Filtra por **rango de fechas**.
 4. (Opcional) Filtra por **tipo de evento** (clicks, movimientos, todos).
-5. Haz clic en **"Actualizar"** para renderizar el mapa.
+5. (Opcional) Filtra por **dispositivo** (todos, desktop, mobile).
+6. Haz clic en **"Actualizar"** para renderizar el mapa.
 
 ### Controles del canvas
 
@@ -76,8 +101,10 @@ Accede a **Heatmap → Ajustes** para:
 - ✅ Definir patrones personalizados de bots.
 - ✅ Incluir/excluir usuarios autenticados en el tracking.
 - ✅ Definir usuarios recurrentes por fecha o lookback (N días).
-- ✅ Gestionar screenshots de páginas.
+- ✅ **Gestionar screenshots por dispositivo** (separados para mobile y desktop).
 - ✅ Eliminar datos en rango de fechas.
+- ✅ Normalizar URLs existentes.
+- ✅ Migrar device_type en eventos antiguos.
 
 ## Notas técnicas
 
@@ -92,6 +119,7 @@ ${wp_prefix}heatmap_leben_events
 - `page_url` - URL de la página donde se capturó el evento
 - `page_id` - ID del post/página (si es singular)
 - `event_type` - Tipo de evento: 'click', 'move'
+- `device_type` - Tipo de dispositivo: 'mobile', 'desktop' (nuevo en v1.3.0)
 - `x` - Posición X dentro del viewport
 - `y` - Posición Y dentro del viewport
 - `viewport_w` - Ancho del viewport
@@ -143,6 +171,7 @@ ${wp_prefix}heatmap_leben_events
       sx: number,
       sy: number,
       ph: number,        // page_height
+      dt: 'mobile|desktop', // device_type
       d: number,         // density
       page: string,      // URL
       pageId: number,
@@ -177,6 +206,41 @@ Al desinstalar el plugin desde WordPress:
 - Si el admin y el sitio usan **dominios/protocolos distintos**, la vista en iframe puede no funcionar (CORS/políticas de mismo origen).
 
 ## Troubleshooting
+
+### Error "Unknown column 'device_type'"
+
+Si ves errores como `WordPress database error Unknown column 'device_type' in 'field list'`, significa que tu base de datos necesita ser actualizada. Usa **una** de estas soluciones:
+
+#### Opción 1: Botón de Migración (Recomendado)
+
+1. Ve a **WordPress Admin → Heatmap → Ajustes**
+2. Busca la sección **"Migrar Device Type"**
+3. Haz clic en **"Migrar Device Type"**
+4. Espera el mensaje de éxito
+
+#### Opción 2: Script de Fix Rápido
+
+1. Accede a: `https://tu-dominio.com/wp-content/plugins/heatmap-leben/fix-device-type.php`
+2. Espera el mensaje de éxito
+3. **IMPORTANTE:** Elimina el archivo `fix-device-type.php` después de ejecutarlo
+
+#### Opción 3: Query SQL Manual
+
+Ejecuta en phpMyAdmin o tu herramienta de base de datos:
+
+```sql
+ALTER TABLE `wp_heatmap_leben_events` 
+ADD COLUMN `device_type` VARCHAR(20) NOT NULL DEFAULT 'desktop' AFTER `event_type`;
+
+ALTER TABLE `wp_heatmap_leben_events` 
+ADD INDEX `idx_device_type` (`device_type`);
+
+UPDATE `wp_heatmap_leben_events` 
+SET device_type = 'desktop' 
+WHERE device_type IS NULL OR device_type = '';
+```
+
+> **Nota:** Reemplaza `wp_` con tu prefijo real de base de datos si es diferente.
 
 ### No se capturan eventos
 

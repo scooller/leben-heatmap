@@ -27,6 +27,7 @@
         els.screenshotStatus = $('#hm-screenshot-status');
         els.scaleSlider = $('#hm-scale-slider');
         els.scaleValue = $('#hm-scale-value');
+        els.deviceType = $('#hm-device-type');
 
         S.canvas = document.createElement('canvas');
         S.ctx = S.canvas.getContext('2d');
@@ -44,6 +45,10 @@
             loadPoints();
             loadScreenshot();
         });
+        els.deviceType.on('change', function () {
+            loadPoints();
+            loadScreenshot();
+        });
 
         els.exportImg.on('click', exportImage);
         els.exportCsv.on('click', exportCsv);
@@ -55,6 +60,10 @@
             els.scaleValue.text(scalePercent + '%');
             applyScale();
         });
+
+        // Establecer fecha "hasta" al día de hoy por defecto
+        const today = new Date().toISOString().split('T')[0];
+        els.dateTo.val(today);
     }
 
     function loadPages() {
@@ -115,8 +124,13 @@
 
         // 🎯 LEE EL FILTRO DE EVENTOS
         const eventType = $('#hm-event-type').val() || 'click';
+        const deviceType = els.deviceType.val() || 'all';
 
-        console.log('Loading points:', { page_url, from, to, eventType });
+        console.log('Loading points:', { page_url, from, to, eventType, deviceType });
+
+        // Mostrar estado de carga
+        els.refresh.prop('disabled', true).html('<span class="spinner is-active" style="float:none;margin:0 8px 0 0;"></span>Cargando...');
+        els.stats.html('<span style="color:#999;">Cargando datos...</span>');
 
         $.post(HeatmapLebenAdmin.ajaxUrl, {
             action: 'hm_leben_get_points',
@@ -124,7 +138,8 @@
             page_url,
             from,
             to,
-            event_type: eventType  // 🎯 ENVÍA EL FILTRO AL SERVIDOR
+            event_type: eventType,  // 🎯 ENVÍA EL FILTRO AL SERVIDOR
+            device_type: deviceType
         })
             .done(res => {
                 console.log('Points response:', res);
@@ -140,11 +155,17 @@
             })
             .fail((xhr, status, err) => {
                 console.error('Points AJAX failed:', { status, err });
+                els.stats.html('<span style="color:red;">Error al cargar datos</span>');
+            })
+            .always(() => {
+                // Restaurar botón
+                els.refresh.prop('disabled', false).html('Actualizar');
             });
     }
 
     function loadScreenshot() {
         const page_url = els.pageSelect.val();
+        const deviceType = els.deviceType.val() || 'all';
         if (!page_url) return;
 
         if (els.screenshotStatus) {
@@ -154,7 +175,8 @@
         $.post(HeatmapLebenAdmin.ajaxUrl, {
             action: 'hm_leben_get_screenshot',
             nonce: HeatmapLebenAdmin.nonce,
-            page_url
+            page_url,
+            device_type: deviceType === 'all' ? 'desktop' : deviceType
         })
             .done(res => {
                 console.log('Screenshot response:', res);
@@ -411,12 +433,17 @@
     }
 
     function updateStats(page_url, from, to) {
+        const deviceType = els.deviceType.val() || 'all';
+        const eventType = $('#hm-event-type').val() || 'click';
+
         $.post(HeatmapLebenAdmin.ajaxUrl, {
             action: 'hm_leben_get_stats',
             nonce: HeatmapLebenAdmin.nonce,
             page_url,
             from,
-            to
+            to,
+            device_type: deviceType,
+            event_type: eventType
         })
             .done(res => {
                 if (!res || !res.success) return;

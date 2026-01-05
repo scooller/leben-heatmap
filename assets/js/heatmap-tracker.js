@@ -24,6 +24,14 @@
   const maxBatch = 50;
   const flushInterval = 2000;
 
+  // Detectar tipo de dispositivo (mobile/desktop)
+  function getDeviceType() {
+    if (window.innerWidth <= 768) {
+      return 'mobile';
+    }
+    return 'desktop';
+  }
+
   // 🎯 LEER ESTADO CADA VEZ - CON ALTURA REAL DE PÁGINA
   function getState() {
     return {
@@ -37,7 +45,9 @@
         document.body.scrollHeight,
         document.documentElement.offsetHeight,
         document.body.offsetHeight
-      )
+      ),
+      // 🎯 TIPO DE DISPOSITIVO
+      dt: getDeviceType()
     };
   }
 
@@ -63,8 +73,6 @@
     form.append('nonce', nonce);
     form.append('batch', JSON.stringify(batch));
 
-    console.log('📤 Enviando batch:', batch.length, 'eventos');
-
     // Usar sendBeacon si está disponible (mejor para unload)
     if (navigator.sendBeacon) {
       const b = new Blob(
@@ -72,7 +80,6 @@
         { type: 'application/x-www-form-urlencoded' }
       );
       navigator.sendBeacon(ajaxUrl, b);
-      console.log('📤 Beacon enviado');
     }
     // Sino, usar fetch
     else if (window.fetch) {
@@ -84,12 +91,10 @@
         .then(r => r.json())
         .then(d => {
           if (d.success) {
-            console.log('✅ Batch insertado:', d.data.inserted);
           } else {
-            console.error('❌ Error:', d.data);
           }
         })
-        .catch(e => console.error('❌ Fetch error:', e));
+        .catch(e => {});
     }
 
     if (timer) {
